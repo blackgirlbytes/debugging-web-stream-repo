@@ -9,7 +9,7 @@ export default function Home() {
   const [sentDings, setSentDings] = useState([]);
   const [noteValue, setNoteValue] = useState('');
   const [recipientDid, setRecipientDid] = useState('');
-
+  const [activeRecipient, setActiveRecipient] = useState(null);
 
   const allDings = [...receivedDings, ...sentDings];
   const groupedDings = allDings.reduce((acc, ding) => {
@@ -30,12 +30,10 @@ export default function Home() {
         await fetchDings(web5, did);
       }
     };
-
     initWeb5();
   }, []);
 
   const configureProtocol = async (web5) => {
-    // define the protocol
     const dingerProtocolDefinition = {
       protocol: "https://blackgirlbytes.dev/dinger-protocol",
       published: true,
@@ -55,7 +53,7 @@ export default function Home() {
         },
       },
     };
-    // query for the protocol
+
     const { protocols, status: protocolStatus } = await web5.dwn.protocols.query({
       message: {
         filter: {
@@ -63,7 +61,7 @@ export default function Home() {
         },
       },
     });
-    // handle query results
+
     if (protocolStatus.code !== 200 || protocols.length === 0) {
       const { protocolStatus } = await web5.dwn.protocols.configure({
         message: {
@@ -76,8 +74,6 @@ export default function Home() {
 
   const constructDing = () => {
     const currentDate = new Date().toLocaleDateString();
-
-
     const ding = {
       sender: myDid,
       note: noteValue,
@@ -109,11 +105,7 @@ export default function Home() {
     const { status } = await sendRecord(record);
     console.log(status)
     await fetchDings(web5, myDid);
-  }
-
-  // send a ding to another dwn
-  // const sendDing = async (ding) => {
-
+  };
 
   const handleCopyDid = async () => {
     if (myDid) {
@@ -136,21 +128,16 @@ export default function Home() {
         dateSort: 'createdAscending',
       },
     });
-    console.log('records!!!!', records)
 
     try {
-
       const results = await Promise.all(
         records.map(async (record) => await record.data.json())
       );
 
-      console.log('results!!!!', results)
-      // if (results.length > 0) {
       if (recordStatus.code == 200) {
         const received = results.filter(
           (result) => result.recipient === did
         );
-
         const sent = results.filter(
           (result) => result.sender === did
         );
@@ -161,49 +148,80 @@ export default function Home() {
     } catch (error) {
       console.error(error);
     }
-
   };
 
 
   return (
-    <div>
-      <h1>Dinger</h1>
-      <p>This is a demo application to show how DWNs can communicate with other DWNs</p>
-      <button onClick={handleCopyDid}>Copy DID</button>
-      <form onSubmit={handleSubmit}>
-        <label htmlFor="recipientDid">Recipient DID</label>
-        <input
-          type="text"
-          placeholder="Enter DID"
-          name="recipientDid" id="recipientDid"
-          value={recipientDid}
-          onChange={(e) => setRecipientDid(e.target.value)}
-        />
-        <label htmlFor="note">Note</label>
-        <input
-          type="text"
-          placeholder="Enter Note"
-          value={noteValue}
-          name="note" id="note"
-          onChange={(e) => setNoteValue(e.target.value)}
-        />
-        <button type="submit">Submit</button>
-      </form>
-      <h2>All Dings</h2>
-      {Object.entries(groupedDings).map(([recipient, dings]) => (
-        <div key={recipient}>
-          <h3>Conversation with {recipient}</h3>
-          <ul>
-            {dings.map((ding, index) => (
-              <li key={index} style={{ textAlign: ding.sender === myDid ? 'right' : 'left' }}>
-                <p>{ding.sender === myDid ? 'you' : 'recipient'}: {ding.note}</p>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-    </div>
+    <div className="app-container">
+      <header>
+        <h1>Dinger</h1>
+      </header>
 
+      <main>
+        <aside>
+          <h2>Chat list</h2>
+          {Object.keys(groupedDings).map((recipient) => (
+            <div
+              key={recipient}
+              className="sidebar-item"
+              onClick={() => setActiveRecipient(recipient)}
+            >
+              <h3>{recipient}</h3>
+            </div>
+          ))}
+        </aside>
+
+
+        <section>
+          {activeRecipient && groupedDings[activeRecipient] && (
+            <div className="conversation">
+              <h3>Conversation with <span className="truncate">{activeRecipient}</span></h3>
+              <ul>
+                {groupedDings[activeRecipient].map((ding, index) => (
+                  <li key={index} className={ding.sender === myDid ? 'bg-blue-100' : 'bg-gray-100'}>
+                    <p><strong>{ding.sender === myDid ? 'You' : 'Recipient'}:</strong> {ding.note}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      </main>
+
+      <footer className="sticky-footer">
+        <div className="footer-section" onClick={handleCopyDid}>
+          <button>Copy DID</button>
+        </div>
+        <form className="footer-section" onSubmit={handleSubmit}>
+          <div className="input-group">
+            <label htmlFor="recipientDid">Recipient DID</label>
+            <input
+              type="text"
+              placeholder="Enter DID"
+              name="recipientDid" id="recipientDid"
+              value={recipientDid}
+              onChange={(e) => setRecipientDid(e.target.value)}
+            />
+          </div>
+          <div className="input-group">
+            <label htmlFor="note">Note</label>
+            <input
+              type="text"
+              placeholder="Enter Note"
+              value={noteValue}
+              name="note" id="note"
+              onChange={(e) => setNoteValue(e.target.value)}
+            />
+          </div>
+        </form>
+        <div className="footer-section">
+          <button type="submit" onClick={handleSubmit}>Send</button>
+        </div>
+      </footer>
+
+
+
+    </div>
   );
 }
 
