@@ -2,16 +2,19 @@ import { Web5 } from "@web5/api";
 import { useState, useEffect } from "react";
 
 export default function Home() {
-
   const [web5, setWeb5] = useState(null);
   const [myDid, setMyDid] = useState(null);
   const [receivedDings, setReceivedDings] = useState([]);
   const [sentDings, setSentDings] = useState([]);
-  const [noteValue, setNoteValue] = useState('');
-  const [recipientDid, setRecipientDid] = useState('');
+  const [noteValue, setNoteValue] = useState("");
+  const [recipientDid, setRecipientDid] = useState("");
   const [activeRecipient, setActiveRecipient] = useState(null);
 
   const allDings = [...receivedDings, ...sentDings];
+  const sortedDings = allDings.sort(
+    (a, b) => new Date(a.timestampWritten) - new Date(b.timestampWritten),
+  );
+
   const groupedDings = allDings.reduce((acc, ding) => {
     const recipient = ding.sender === myDid ? ding.recipient : ding.sender;
     if (!acc[recipient]) acc[recipient] = [];
@@ -33,13 +36,31 @@ export default function Home() {
     initWeb5();
   }, []);
 
+  useEffect(() => {
+    if (!web5 || !myDid) return;
+
+    const intervalId = setInterval(async () => {
+      await fetchDings(web5, myDid);
+    }, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [web5, myDid]);
+
   const configureProtocol = async (web5) => {
     const dingerProtocolDefinition = {
       protocol: "https://blackgirlbytes.dev/dinger-protocol",
       published: true,
       types: {
         ding: {
-          schema: "ding",
+          schema: {
+            type: "object",
+            properties: {
+              sender: { type: "string" },
+              note: { type: "string" },
+              recipient: { type: "string" },
+              timestampWritten: { type: "string" },
+            },
+          },
           dataFormats: ["application/json"],
         },
       },
@@ -54,13 +75,14 @@ export default function Home() {
       },
     };
 
-    const { protocols, status: protocolStatus } = await web5.dwn.protocols.query({
-      message: {
-        filter: {
-          protocol: "https://blackgirlbytes.dev/dinger-protocol",
+    const { protocols, status: protocolStatus } =
+      await web5.dwn.protocols.query({
+        message: {
+          filter: {
+            protocol: "https://blackgirlbytes.dev/dinger-protocol",
+          },
         },
-      },
-    });
+      });
 
     if (protocolStatus.code !== 200 || protocols.length === 0) {
       const { protocolStatus } = await web5.dwn.protocols.configure({
@@ -73,12 +95,12 @@ export default function Home() {
   };
 
   const constructDing = () => {
-    const currentDate = new Date().toLocaleDateString();
+    const timestampWritten = new Date().toISOString();
     const ding = {
       sender: myDid,
       note: noteValue,
       recipient: recipientDid,
-      timestampWritten: `${currentDate}}`,
+      timestampWritten,
     };
     return ding;
   };
@@ -103,7 +125,7 @@ export default function Home() {
     const ding = constructDing();
     const record = await writeToDwn(ding);
     const { status } = await sendRecord(record);
-    console.log(status)
+    console.log(status);
     await fetchDings(web5, myDid);
   };
 
@@ -111,9 +133,9 @@ export default function Home() {
     if (myDid) {
       try {
         await navigator.clipboard.writeText(myDid);
-        console.log('DID copied to clipboard', myDid)
+        console.log("DID copied to clipboard", myDid);
       } catch (err) {
-        console.log('Failed to copy DID: ' + err);
+        console.log("Failed to copy DID: " + err);
       }
     }
   };
@@ -125,31 +147,26 @@ export default function Home() {
           protocol: "https://blackgirlbytes.dev/dinger-protocol",
           protocolPath: "ding",
         },
-        dateSort: 'createdAscending',
+        dateSort: "createdDescending",
       },
     });
 
     try {
       const results = await Promise.all(
-        records.map(async (record) => await record.data.json())
+        records.map(async (record) => await record.data.json()),
       );
 
       if (recordStatus.code == 200) {
-        const received = results.filter(
-          (result) => result.recipient === did
-        );
-        const sent = results.filter(
-          (result) => result.sender === did
-        );
+        const received = results.filter((result) => result.recipient === did);
+        const sent = results.filter((result) => result.sender === did);
 
         setReceivedDings(received);
-        setSentDings(sent)
+        setSentDings(sent);
       }
     } catch (error) {
       console.error(error);
     }
   };
-
 
   return (
     <div className="app-container">
@@ -171,15 +188,27 @@ export default function Home() {
           ))}
         </aside>
 
-
         <section>
           {activeRecipient && groupedDings[activeRecipient] && (
             <div className="conversation">
-              <h3>Conversation with <span className="truncate">{activeRecipient}</span></h3>
+              <h3>
+                Conversation with{" "}
+                <span className="truncate">{activeRecipient}</span>
+              </h3>
               <ul>
-                {groupedDings[activeRecipient].map((ding, index) => (
-                  <li key={index} className={ding.sender === myDid ? 'bg-blue-100' : 'bg-gray-100'}>
-                    <p><strong>{ding.sender === myDid ? 'You' : 'Recipient'}:</strong> {ding.note}</p>
+                {sortedDings.map((ding, index) => (
+                  <li
+                    key={index}
+                    className={
+                      ding.sender === myDid ? "bg-blue-100" : "bg-gray-100"
+                    }
+                  >
+                    <p>
+                      <strong>
+                        {ding.sender === myDid ? "You" : "Recipient"}:
+                      </strong>{" "}
+                      {ding.note}
+                    </p>
                   </li>
                 ))}
               </ul>
@@ -198,7 +227,8 @@ export default function Home() {
             <input
               type="text"
               placeholder="Enter DID"
-              name="recipientDid" id="recipientDid"
+              name="recipientDid"
+              id="recipientDid"
               value={recipientDid}
               onChange={(e) => setRecipientDid(e.target.value)}
             />
@@ -209,19 +239,18 @@ export default function Home() {
               type="text"
               placeholder="Enter Note"
               value={noteValue}
-              name="note" id="note"
+              name="note"
+              id="note"
               onChange={(e) => setNoteValue(e.target.value)}
             />
           </div>
         </form>
         <div className="footer-section">
-          <button type="submit" onClick={handleSubmit}>Send</button>
+          <button type="submit" onClick={handleSubmit}>
+            Send
+          </button>
         </div>
       </footer>
-
-
-
     </div>
   );
 }
-
