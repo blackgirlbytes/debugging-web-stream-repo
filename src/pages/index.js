@@ -196,21 +196,27 @@ export default function Home() {
                 <span className="truncate">{activeRecipient}</span>
               </h3>
               <ul>
-                {sortedDings.map((ding, index) => (
-                  <li
-                    key={index}
-                    className={
-                      ding.sender === myDid ? "bg-blue-100" : "bg-gray-100"
-                    }
-                  >
-                    <p>
-                      <strong>
-                        {ding.sender === myDid ? "You" : "Recipient"}:
-                      </strong>{" "}
-                      {ding.note}
-                    </p>
-                  </li>
-                ))}
+                {sortedDings
+                  .filter(
+                    (ding) =>
+                      ding.sender === activeRecipient ||
+                      ding.recipient === activeRecipient,
+                  )
+                  .map((ding, index) => (
+                    <li
+                      key={index}
+                      className={
+                        ding.sender === myDid ? "bg-blue-100" : "bg-gray-100"
+                      }
+                    >
+                      <p>
+                        <strong>
+                          {ding.sender === myDid ? "You" : "Recipient"}:
+                        </strong>{" "}
+                        {ding.note}
+                      </p>
+                    </li>
+                  ))}
               </ul>
             </div>
           )}
