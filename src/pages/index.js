@@ -2,19 +2,19 @@ import { Web5 } from "@web5/api";
 import { useState, useEffect } from "react";
 
 export default function Home() {
+
   const [web5, setWeb5] = useState(null);
   const [myDid, setMyDid] = useState(null);
   const [receivedDings, setReceivedDings] = useState([]);
   const [sentDings, setSentDings] = useState([]);
-  const [noteValue, setNoteValue] = useState("");
-  const [recipientDid, setRecipientDid] = useState("");
+  const [noteValue, setNoteValue] = useState('');
+  const [recipientDid, setRecipientDid] = useState('');
   const [activeRecipient, setActiveRecipient] = useState(null);
 
   const allDings = [...receivedDings, ...sentDings];
   const sortedDings = allDings.sort(
     (a, b) => new Date(a.timestampWritten) - new Date(b.timestampWritten),
   );
-
   const groupedDings = allDings.reduce((acc, ding) => {
     const recipient = ding.sender === myDid ? ding.recipient : ding.sender;
     if (!acc[recipient]) acc[recipient] = [];
@@ -52,15 +52,7 @@ export default function Home() {
       published: true,
       types: {
         ding: {
-          schema: {
-            type: "object",
-            properties: {
-              sender: { type: "string" },
-              note: { type: "string" },
-              recipient: { type: "string" },
-              timestampWritten: { type: "string" },
-            },
-          },
+          schema: "ding",
           dataFormats: ["application/json"],
         },
       },
@@ -75,14 +67,13 @@ export default function Home() {
       },
     };
 
-    const { protocols, status: protocolStatus } =
-      await web5.dwn.protocols.query({
-        message: {
-          filter: {
-            protocol: "https://blackgirlbytes.dev/dinger-protocol",
-          },
+    const { protocols, status: protocolStatus } = await web5.dwn.protocols.query({
+      message: {
+        filter: {
+          protocol: "https://blackgirlbytes.dev/dinger-protocol",
         },
-      });
+      },
+    });
 
     if (protocolStatus.code !== 200 || protocols.length === 0) {
       const { protocolStatus } = await web5.dwn.protocols.configure({
@@ -95,12 +86,12 @@ export default function Home() {
   };
 
   const constructDing = () => {
-    const timestampWritten = new Date().toISOString();
+    const currentDate = new Date().toLocaleDateString();
     const ding = {
       sender: myDid,
       note: noteValue,
       recipient: recipientDid,
-      timestampWritten,
+      timestampWritten: `${currentDate}}`,
     };
     return ding;
   };
@@ -125,7 +116,7 @@ export default function Home() {
     const ding = constructDing();
     const record = await writeToDwn(ding);
     const { status } = await sendRecord(record);
-    console.log(status);
+    console.log(status)
     await fetchDings(web5, myDid);
   };
 
@@ -133,9 +124,9 @@ export default function Home() {
     if (myDid) {
       try {
         await navigator.clipboard.writeText(myDid);
-        console.log("DID copied to clipboard", myDid);
+        console.log('DID copied to clipboard', myDid)
       } catch (err) {
-        console.log("Failed to copy DID: " + err);
+        console.log('Failed to copy DID: ' + err);
       }
     }
   };
@@ -147,26 +138,31 @@ export default function Home() {
           protocol: "https://blackgirlbytes.dev/dinger-protocol",
           protocolPath: "ding",
         },
-        dateSort: "createdDescending",
+        dateSort: 'createdAscending',
       },
     });
 
     try {
       const results = await Promise.all(
-        records.map(async (record) => await record.data.json()),
+        records.map(async (record) => await record.data.json())
       );
 
       if (recordStatus.code == 200) {
-        const received = results.filter((result) => result.recipient === did);
-        const sent = results.filter((result) => result.sender === did);
+        const received = results.filter(
+          (result) => result.recipient === did
+        );
+        const sent = results.filter(
+          (result) => result.sender === did
+        );
 
         setReceivedDings(received);
-        setSentDings(sent);
+        setSentDings(sent)
       }
     } catch (error) {
       console.error(error);
     }
   };
+
 
   return (
     <div className="app-container">
