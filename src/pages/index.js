@@ -1,20 +1,31 @@
 import { Web5 } from "@web5/api";
 import { useState, useEffect } from "react";
+import { NoChatSelected } from "@/components/NoChatSelected";
+import { Sidebar } from "@/components/Sidebar";
+import { Chat } from "@/components/Chat";
 
 export default function Home() {
 
   const [web5, setWeb5] = useState(null);
   const [myDid, setMyDid] = useState(null);
-  const [receivedDings, setReceivedDings] = useState([]);
-  const [sentDings, setSentDings] = useState([]);
-  const [noteValue, setNoteValue] = useState('');
-  const [recipientDid, setRecipientDid] = useState('');
   const [activeRecipient, setActiveRecipient] = useState(null);
 
+  const [receivedDings, setReceivedDings] = useState([]);
+  const [sentDings, setSentDings] = useState([]);
+
+  const [noteValue, setNoteValue] = useState("");
+  const [errorMessage, setErrorMessage] = useState('');
+  const [recipientDid, setRecipientDid] = useState("");
+
+  const [didCopied, setDidCopied] = useState(false);
+  const [showNewChatInput, setShowNewChatInput] = useState(false);
+
   const allDings = [...receivedDings, ...sentDings];
+
   const sortedDings = allDings.sort(
-    (a, b) => new Date(a.timestampWritten) - new Date(b.timestampWritten),
+    (a, b) => new Date(a.timestampWritten) - new Date(b.timestampWritten)
   );
+
   const groupedDings = allDings.reduce((acc, ding) => {
     const recipient = ding.sender === myDid ? ding.recipient : ding.sender;
     if (!acc[recipient]) acc[recipient] = [];
@@ -38,7 +49,6 @@ export default function Home() {
 
   useEffect(() => {
     if (!web5 || !myDid) return;
-
     const intervalId = setInterval(async () => {
       await fetchDings(web5, myDid);
     }, 2000);
@@ -48,11 +58,11 @@ export default function Home() {
 
   const configureProtocol = async (web5) => {
     const dingerProtocolDefinition = {
-      protocol: "https://blackgirlbytes.dev/dinger-protocol",
+      protocol: "https://blackgirlbytes.dev/dinger-chat-protocol",
       published: true,
       types: {
         ding: {
-          schema: "ding",
+          schema: "https://blackgirlbytes.dev/ding",
           dataFormats: ["application/json"],
         },
       },
@@ -67,13 +77,14 @@ export default function Home() {
       },
     };
 
-    const { protocols, status: protocolStatus } = await web5.dwn.protocols.query({
-      message: {
-        filter: {
-          protocol: "https://blackgirlbytes.dev/dinger-protocol",
+    const { protocols, status: protocolStatus } =
+      await web5.dwn.protocols.query({
+        message: {
+          filter: {
+            protocol: "https://blackgirlbytes.dev/dinger-chat-protocol",
+          },
         },
-      },
-    });
+      });
 
     if (protocolStatus.code !== 200 || protocols.length === 0) {
       const { protocolStatus } = await web5.dwn.protocols.configure({
@@ -87,11 +98,12 @@ export default function Home() {
 
   const constructDing = () => {
     const currentDate = new Date().toLocaleDateString();
+    const currentTime = new Date().toLocaleTimeString();
     const ding = {
       sender: myDid,
       note: noteValue,
       recipient: recipientDid,
-      timestampWritten: `${currentDate}}`,
+      timestampWritten: `${currentDate} ${currentTime}`,
     };
     return ding;
   };
@@ -100,23 +112,33 @@ export default function Home() {
     const { record } = await web5.dwn.records.write({
       data: ding,
       message: {
-        protocol: "https://blackgirlbytes.dev/dinger-protocol",
+        protocol: "https://blackgirlbytes.dev/dinger-chat-protocol",
         protocolPath: "ding",
-        schema: "ding",
+        schema: "https://blackgirlbytes.dev/ding",
         recipient: recipientDid,
       },
     });
     return record;
   };
+
   const sendRecord = async (record) => {
     return await record.send(recipientDid);
   };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!noteValue.trim()) {
+      setErrorMessage('Please type a message before sending.');
+      return;
+    }
+
     const ding = constructDing();
     const record = await writeToDwn(ding);
     const { status } = await sendRecord(record);
-    console.log(status)
+
+    console.log("Send record status", status);
+    
     await fetchDings(web5, myDid);
   };
 
@@ -124,9 +146,13 @@ export default function Home() {
     if (myDid) {
       try {
         await navigator.clipboard.writeText(myDid);
-        console.log('DID copied to clipboard', myDid)
+        setDidCopied(true);
+
+        setTimeout(() => {
+          setDidCopied(false);
+        }, 3000);
       } catch (err) {
-        console.log('Failed to copy DID: ' + err);
+        console.log("Failed to copy DID: " + err);
       }
     }
   };
@@ -135,124 +161,84 @@ export default function Home() {
     const { records, status: recordStatus } = await web5.dwn.records.query({
       message: {
         filter: {
-          protocol: "https://blackgirlbytes.dev/dinger-protocol",
+          protocol: "https://blackgirlbytes.dev/dinger-chat-protocol",
           protocolPath: "ding",
         },
-        dateSort: 'createdAscending',
+        dateSort: "createdAscending",
       },
     });
 
     try {
       const results = await Promise.all(
-        records.map(async (record) => await record.data.json())
+        records.map(async (record) => record.data.json())
       );
 
       if (recordStatus.code == 200) {
-        const received = results.filter(
-          (result) => result.recipient === did
-        );
-        const sent = results.filter(
-          (result) => result.sender === did
-        );
-
+        const received = results.filter((result) => result?.recipient === did);
+        const sent = results.filter((result) => result?.sender === did);
         setReceivedDings(received);
-        setSentDings(sent)
+        setSentDings(sent);
       }
     } catch (error) {
       console.error(error);
     }
   };
 
+  const handleStartNewChat = () => {
+    setActiveRecipient(null);
+    setShowNewChatInput(true);
+  };
+
+  const handleSetActiveRecipient = (recipient) => {
+    setRecipientDid(recipient);
+    setActiveRecipient(recipient);
+    setShowNewChatInput(false);
+  };
+
+  const handleConfirmNewChat = () => {
+    setActiveRecipient(recipientDid);
+    setActiveRecipient(recipientDid);
+    setShowNewChatInput(false);
+    if (!groupedDings[recipientDid]) {
+      groupedDings[recipientDid] = [];
+    }
+  };
 
   return (
     <div className="app-container">
       <header>
         <h1>Dinger</h1>
       </header>
-
       <main>
-        <aside>
-          <h2>Chat list</h2>
-          {Object.keys(groupedDings).map((recipient) => (
-            <div
-              key={recipient}
-              className="sidebar-item"
-              onClick={() => setActiveRecipient(recipient)}
-            >
-              <h3>{recipient}</h3>
-            </div>
-          ))}
-        </aside>
-
+        <Sidebar
+          groupedDings={groupedDings}
+          activeRecipient={activeRecipient}
+          handleSetActiveRecipient={handleSetActiveRecipient}
+          handleCopyDid={handleCopyDid}
+          handleStartNewChat={handleStartNewChat}
+          showNewChatInput={showNewChatInput}
+          didCopied={didCopied}
+          handleConfirmNewChat={handleConfirmNewChat}
+          setRecipientDid={setRecipientDid}
+          recipientDid={recipientDid}
+        />
         <section>
-          {activeRecipient && groupedDings[activeRecipient] && (
-            <div className="conversation">
-              <h3>
-                Conversation with{" "}
-                <span className="truncate">{activeRecipient}</span>
-              </h3>
-              <ul>
-                {sortedDings
-                  .filter(
-                    (ding) =>
-                      ding.sender === activeRecipient ||
-                      ding.recipient === activeRecipient,
-                  )
-                  .map((ding, index) => (
-                    <li
-                      key={index}
-                      className={
-                        ding.sender === myDid ? "bg-blue-100" : "bg-gray-100"
-                      }
-                    >
-                      <p>
-                        <strong>
-                          {ding.sender === myDid ? "You" : "Recipient"}:
-                        </strong>{" "}
-                        {ding.note}
-                      </p>
-                    </li>
-                  ))}
-              </ul>
-            </div>
+          {activeRecipient ? (
+            <Chat
+              activeRecipient={activeRecipient}
+              sortedDings={sortedDings}
+              myDid={myDid}
+              handleSubmit={handleSubmit}
+              noteValue={noteValue}
+              setNoteValue={setNoteValue}
+              errorMessage={errorMessage}
+              setErrorMessage={setErrorMessage}
+            />
+          ) : (
+            <NoChatSelected />
           )}
         </section>
       </main>
-
-      <footer className="sticky-footer">
-        <div className="footer-section" onClick={handleCopyDid}>
-          <button>Copy DID</button>
-        </div>
-        <form className="footer-section" onSubmit={handleSubmit}>
-          <div className="input-group">
-            <label htmlFor="recipientDid">Recipient DID</label>
-            <input
-              type="text"
-              placeholder="Enter DID"
-              name="recipientDid"
-              id="recipientDid"
-              value={recipientDid}
-              onChange={(e) => setRecipientDid(e.target.value)}
-            />
-          </div>
-          <div className="input-group">
-            <label htmlFor="note">Note</label>
-            <input
-              type="text"
-              placeholder="Enter Note"
-              value={noteValue}
-              name="note"
-              id="note"
-              onChange={(e) => setNoteValue(e.target.value)}
-            />
-          </div>
-        </form>
-        <div className="footer-section">
-          <button type="submit" onClick={handleSubmit}>
-            Send
-          </button>
-        </div>
-      </footer>
     </div>
   );
 }
